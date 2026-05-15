@@ -22,7 +22,9 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 
   <style>
-    body { margin: 0; padding: 0; background: #f0efeb; }
+    /* Prevent content min-widths from expanding the iframe beyond the WP column */
+    html, body { margin: 0; padding: 0; overflow-x: hidden; max-width: 100%; }
+    body { background: #f0efeb; }
     /* No min-height on #root — iframe height is driven by content via postMessage */
     #root { }
     /* Loading indicator while Babel compiles */
@@ -488,26 +490,30 @@
     ReactDOM.createRoot(document.getElementById('root')).render(<RothConversionCalculator />);
 
     // ─── dynamic iframe height ────────────────────────────────────────────────
-    // Posts actual document height to the WordPress parent so the iframe resizes
-    // to fit content on every device — no fixed height needed in the embed code.
-    // Pair with the updated WordPress embed snippet (see README / deploy notes).
+    // Posts the tight bottom edge of the calculator element to the WordPress
+    // parent — more accurate than scrollHeight which can include stale margins.
+    // Pair with the updated WordPress embed snippet (see deploy notes).
     (function () {
       let lastH = 0, timer;
       function reportHeight() {
         clearTimeout(timer);
         timer = setTimeout(function () {
-          const h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+          const el = document.getElementById('tae-roth-calc');
+          const h = el
+            ? Math.ceil(el.getBoundingClientRect().bottom + window.scrollY) + 32
+            : Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
           if (h !== lastH) {
             lastH = h;
             window.parent.postMessage({ type: 'rothCalcHeight', height: h }, '*');
           }
-        }, 60);
+        }, 80);
       }
       if (typeof ResizeObserver !== 'undefined') {
-        new ResizeObserver(reportHeight).observe(document.body);
+        new ResizeObserver(reportHeight).observe(document.getElementById('root') || document.body);
       }
       window.addEventListener('resize', reportHeight);
-      reportHeight();
+      // Delay initial report to allow React/Babel to finish first paint
+      setTimeout(reportHeight, 400);
     })();
   </script>
 
@@ -665,6 +671,7 @@
     @media (min-width: 641px) and (max-width: 860px) {
       #tae-roth-calc .explainer-grid { grid-template-columns: 1fr 1fr; }
       #tae-roth-calc .controls-grid  { grid-template-columns: 1fr; }
+      #tae-roth-calc .tae-container  { padding: 2rem 1.5rem 2.5rem; }
     }
     @media print {
       #tae-roth-calc .tae-container > *:not(.summary-wrap) { display: none !important; }
