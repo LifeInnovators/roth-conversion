@@ -1,0 +1,644 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Roth Conversion Calculator — TAE (Local Test)</title>
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css">
+
+  <!-- React 18 -->
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+
+  <!-- Babel (transpiles JSX in the browser — test only, not for production) -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Chart.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+
+  <style>
+    body { margin: 0; padding: 0; background: #f0efeb; }
+    #root { min-height: 100vh; }
+    /* Loading indicator while Babel compiles */
+    #loading { font-family: system-ui; font-size: 14px; color: #888; padding: 2rem; text-align: center; }
+  </style>
+</head>
+<body>
+  <div id="loading">Loading calculator…</div>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    // ─── React hooks (from CDN global) ────────────────────────────────────────
+    const { useState, useEffect, useRef, useMemo } = React;
+    // Chart is already a global from the Chart.js CDN script above.
+
+    // ─── constants ────────────────────────────────────────────────────────────
+    const RMD_FACTORS = {
+      73:26.5, 74:25.5, 75:24.6, 76:23.7, 77:22.9, 78:22.0, 79:21.1, 80:20.2,
+      81:19.4, 82:18.5, 83:17.7, 84:16.8, 85:16.0, 86:15.2, 87:14.4, 88:13.7,
+      89:12.9, 90:12.2, 91:11.5, 92:10.8, 93:10.1, 94:9.5,  95:8.9,  96:8.4,
+      97:7.8,  98:7.3,  99:6.8,  100:6.4,
+    };
+
+    // ─── pure helpers ─────────────────────────────────────────────────────────
+    const fmt  = v => '$' + Math.round(v).toLocaleString();
+    const fmtK = v => {
+      const a = Math.abs(v), s = v < 0 ? '-' : '';
+      if (a >= 1e6)  return s + '$' + (a / 1e6).toFixed(1) + 'M';
+      if (a >= 1000) return s + '$' + Math.round(a / 1000) + 'K';
+      return s + '$' + Math.round(a);
+    };
+    const rmdFactor = age => age < 73 ? null : (RMD_FACTORS[Math.min(age, 100)] || 6.0);
+
+    // ─── core computation ─────────────────────────────────────────────────────
+    function compute(pv, r, acc, liq, t, td, w, outsideTax, rmdMode, startAge) {
+      const rothStart     = outsideTax ? pv : pv * (1 - t);
+      const taxPaid       = pv * t;
+      const yr0TradWealth = pv * (1 - td);
+      const yr0RothWealth = rothStart - (outsideTax ? taxPaid : 0);
+      const yr0Adv        = Math.round(yr0RothWealth - yr0TradWealth);
+
+      const rows = [];
+      let tradCV = pv, rothCV = rothStart, cumTradAtw = 0, cumRothW = 0;
+      const chartLabels    = ['Yr 0'];
+      const chartTradCV    = [Math.round(pv)];
+      const chartTradTotal = [Math.round(yr0TradWealth)];
+      const chartRothTotal = [Math.round(yr0RothWealth)];
+
+      for (let i = 1; i <= liq; i++) {
+        const isLiq = i === liq, inDist = i > acc, age = startAge + i, boyCV = tradCV;
+        tradCV = tradCV * (1 + r);
+        rothCV = rothCV * (1 + r);
+        let tradWd = 0, rothWd = 0, isRmd = false;
+
+        if (isLiq) {
+          tradWd = tradCV; rothWd = rothCV; tradCV = 0; rothCV = 0;
+        } else {
+          const volWd = inDist ? tradCV * w : 0;
+          if (rmdMode) {
+            const factor = rmdFactor(age);
+            if (factor !== null) {
+              const rmdAmt = boyCV / factor;
+              if (rmdAmt > volWd) { tradWd = rmdAmt; isRmd = true; }
+              else tradWd = volWd;
+            } else tradWd = volWd;
+          } else tradWd = volWd;
+          rothWd  = inDist ? rothCV * w : 0;
+          tradCV -= tradWd;
+          rothCV -= rothWd;
+        }
+
+        const tradTax         = tradWd * td;
+        const tradAftTax      = tradWd * (1 - td);
+        cumTradAtw           += tradAftTax;
+        cumRothW             += rothWd;
+        const tradTotalWealth = cumTradAtw + tradCV * (1 - td);
+        const rothTotalWealth = cumRothW + rothCV - (outsideTax ? taxPaid : 0);
+        const advantage       = Math.round(rothTotalWealth - tradTotalWealth);
+        const inRmd           = isRmd && !inDist;
+
+        rows.push({ i, age, inDist, isLiq, inRmd, tradCV, tradWd, tradTax, tradAftTax,
+                    cumTradAtw, rothCV, rothWd, cumRothW, tradTotalWealth, rothTotalWealth,
+                    advantage, isRmd });
+        chartLabels.push('Yr ' + i);
+        chartTradCV.push(Math.round(tradCV + tradWd));
+        chartTradTotal.push(Math.round(tradTotalWealth));
+        chartRothTotal.push(Math.round(rothTotalWealth));
+      }
+
+      const last = rows[rows.length - 1];
+      const vLines = [];
+      if (w > 0 && acc + 1 <= liq)
+        vLines.push({ index: acc + 1, label: 'Distributions begin', color: '#555555' });
+      if (rmdMode && startAge < 73) {
+        const ry = 73 - startAge;
+        if (ry >= 1 && ry <= liq)
+          vLines.push({ index: ry, label: 'RMDs begin', color: '#FFBE58' });
+      }
+
+      return {
+        rows, chartLabels, chartTradCV, chartTradTotal, chartRothTotal,
+        last, taxPaid, rothStart, yr0TradWealth, yr0RothWealth, yr0Adv,
+        finalAdv: last.advantage, vLines,
+      };
+    }
+
+    // ─── ledger rows ──────────────────────────────────────────────────────────
+    function buildLedgerRows(rows, w, rmdMode) {
+      const out = [];
+      let lastPhase = null, rmdDividerShown = false;
+
+      rows.forEach((row, idx) => {
+        const phase = row.isLiq ? 'liq' : row.inDist ? 'dist' : row.inRmd ? 'rmd' : 'acc';
+
+        if (phase !== lastPhase && !row.isLiq) {
+          const label = phase === 'acc' ? 'Accumulation — no withdrawals'
+                      : phase === 'rmd' ? 'RMD phase — mandatory distributions begin (age 73+)'
+                      :                   'Distribution — annual withdrawals begin';
+          const skipDist = phase === 'dist' && w === 0;
+          if (!skipDist) {
+            out.push(<tr key={`pd-${idx}`} className="phase-divider"><td colSpan={11}>{label}</td></tr>);
+            if (phase === 'rmd') rmdDividerShown = true;
+          }
+          lastPhase = phase;
+        }
+
+        if (rmdMode && row.isRmd && !rmdDividerShown && phase === 'dist') {
+          out.push(<tr key={`rpd-${idx}`} className="phase-divider"><td colSpan={11}>RMD phase — mandatory distributions begin (age 73+)</td></tr>);
+          rmdDividerShown = true;
+        }
+
+        if (row.isLiq && lastPhase !== 'liq') {
+          out.push(<tr key="liq-pd" className="phase-divider"><td colSpan={11}>Liquidation — full surrender</td></tr>);
+          lastPhase = 'liq';
+        }
+
+        out.push(
+          <tr key={`r${row.i}`} className={row.isLiq ? 'row-liq' : ''}>
+            <td>Yr {row.i}{rmdMode && <span style={{ fontSize: 10, color: '#888780' }}> age {row.age}</span>}</td>
+            <td>{fmt(row.tradCV + row.tradWd)}</td>
+            <td>{row.tradWd > 0 ? <>{fmt(row.tradWd)}{row.isRmd && <span className="tag tag-rmd">RMD</span>}</> : '—'}</td>
+            <td>{row.tradTax    > 0 ? `(${fmt(row.tradTax)})`  : '—'}</td>
+            <td>{row.tradAftTax > 0 ? fmt(row.tradAftTax)      : '—'}</td>
+            <td>{fmt(row.rothCV + row.rothWd)}</td>
+            <td>{row.rothWd > 0 ? fmt(row.rothWd) : '—'}</td>
+            <td>{row.rothWd > 0 ? fmt(row.rothWd) : '—'}</td>
+            <td>{fmt(row.tradTotalWealth)}</td>
+            <td>{fmt(row.rothTotalWealth)}</td>
+            <td className={row.advantage >= 0 ? 'adv-pos' : 'adv-neg'}>{fmt(row.advantage)}</td>
+          </tr>
+        );
+      });
+      return out;
+    }
+
+    // ─── sub-components ───────────────────────────────────────────────────────
+    function ExCard({ icon, title, body }) {
+      return (
+        <div className="ex-card">
+          <div className="ec-head">
+            <i className={`ti ${icon}`} aria-hidden="true" />
+            <span className="ec-title">{title}</span>
+          </div>
+          <div className="ec-body">{body}</div>
+        </div>
+      );
+    }
+
+    function Slider({ label, min, max, step, value, onChange, format }) {
+      return (
+        <div className="ctrl">
+          <label>{label}</label>
+          <input type="range" min={min} max={max} step={step} value={value}
+                 onChange={e => onChange(Number(e.target.value))} />
+          <span className="val">{format(value)}</span>
+        </div>
+      );
+    }
+
+    function SummaryContent({ data, pv, rate, acc, liq, tax, taxd, wd, outsideTax, rmdMode }) {
+      const { rows, last, taxPaid, rothStart, yr0RothWealth, finalAdv } = data;
+      const breakEvenYr = rows.find(r => r.advantage >= 0)?.i ?? null;
+      const yr0TradW    = pv * (1 - taxd / 100);
+      const keyYears    = [0];
+      for (let y = 5; y < liq; y += 5) keyYears.push(y);
+      if (!keyYears.includes(liq)) keyYears.push(liq);
+
+      const tableRows = keyYears.map(y => {
+        if (y === 0) return { yr: 0, tradCV: pv, rothCV: rothStart, tradW: yr0TradW, rothW: yr0RothWealth, adv: yr0RothWealth - yr0TradW };
+        const row = rows.find(r => r.i === y) || rows[rows.length - 1];
+        return { yr: y, tradCV: row.tradCV, rothCV: row.rothCV, tradW: row.tradTotalWealth, rothW: row.rothTotalWealth, adv: row.advantage };
+      });
+
+      const rateDiff = Math.round(taxd - tax);
+      const args = [];
+      args.push({ title: 'Tax-free growth on all distributions', body: `Every dollar withdrawn from the Roth is tax-free. Withdrawals from the traditional IRA are taxed as ordinary income at ${taxd}% — reducing your spendable cash on every distribution for the life of the contract.`, num: `After-tax Roth withdrawals exceed traditional by ${fmt(last.cumRothW - last.cumTradAtw)} over the projection period.`, qual: false });
+      if (rateDiff > 0) args.push({ title: 'Tax rate lock-in', body: `Converting now at ${tax}% locks in today's rate. Future distributions from the traditional IRA would be taxed at ${taxd}% — ${rateDiff} points higher. All growth inside the Roth escapes that higher rate entirely.`, num: `${rateDiff}pt rate advantage applied to every future distribution and the full liquidation value.`, qual: false });
+      if (outsideTax) args.push({ title: 'Full base compounding (outside tax)', body: `Because the conversion tax of ${fmt(taxPaid)} is paid from outside the contract, the full ${fmt(pv)} compounds inside the Roth tax-free — rather than only ${fmt(pv * (1 - tax / 100))} if the tax were paid from within.`, num: `Full ${fmt(pv)} compounding at ${rate}% tax-free vs. ${fmt(pv * (1 - tax / 100))} in the inside-tax scenario.`, qual: false });
+      if (rmdMode) args.push({ title: 'No required minimum distributions', body: 'Traditional IRAs require distributions starting at age 73 — forcing taxable income whether you need it or not. The Roth IRA has no RMDs during your lifetime.', num: 'RMD-forced distributions are shown in the ledger. The Roth avoids all of them.', qual: false });
+      args.push({ title: 'Tax diversification and income flexibility', body: `A Roth bucket alongside pre-tax accounts lets you control your taxable income in retirement — drawing from Roth in years when additional income would push you into a higher bracket, trigger Social Security taxation, or increase Medicare premiums.`, num: null, qual: true });
+      args.push({ title: 'Estate and legacy benefit', body: `Roth IRA assets pass to beneficiaries tax-free. Inherited traditional IRAs require full distribution within 10 years under current law, with all proceeds taxed as ordinary income to heirs — often at their peak earning years.`, num: null, qual: true });
+
+      const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
+      return (
+        <>
+          <div className="summary-header">
+            <div>
+              <div className="sh-logo"><span className="sh-diamond" /><span className="sh-logo-text">The Annuity Edge</span></div>
+              <h2>Roth conversion analysis</h2>
+              <div className="sh-sub">Traditional IRA vs. Roth IRA — projected outcomes at liquidation</div>
+            </div>
+            <div className="sh-right">Prepared {today}<br />For review purposes only</div>
+          </div>
+          <div className="s-section-label">Your scenario</div>
+          <div className="s-metric-grid">
+            <div className="s-metric"><div className="sm-label">Starting value</div><div className="sm-val">{fmt(pv)}</div></div>
+            <div className="s-metric"><div className="sm-label">Growth rate</div><div className="sm-val">{rate}%</div><div className="sm-sub">annual crediting rate</div></div>
+            <div className="s-metric"><div className="sm-label">Conversion tax</div><div className="sm-val">{fmt(taxPaid)}</div><div className="sm-sub">{outsideTax ? 'paid from outside contract' : `at ${tax}%, from contract`}</div></div>
+            <div className="s-metric"><div className="sm-label">Withdrawals begin</div><div className="sm-val">Year {acc}</div><div className="sm-sub">at {Number(wd).toFixed(1)}% annually</div></div>
+            <div className="s-metric"><div className="sm-label">Liquidation year</div><div className="sm-val">Year {liq}</div><div className="sm-sub">full surrender</div></div>
+            <div className="s-metric"><div className="sm-label">Roth break-even</div><div className="sm-val">{breakEvenYr !== null ? `Year ${breakEvenYr}` : 'Beyond projection'}</div><div className="sm-sub">first year Roth leads</div></div>
+            <div className="s-metric hero"><div><div className="sm-label">{finalAdv >= 0 ? 'Roth net advantage at liquidation' : 'Traditional advantage at liquidation'}</div><div className="sm-sub">Roth {fmt(last.rothTotalWealth)} vs. Traditional {fmt(last.tradTotalWealth)}</div></div><div className="sm-val">{fmt(Math.abs(finalAdv))}</div></div>
+          </div>
+          <div className="s-section-label">The case for conversion</div>
+          <div className="s-args">
+            {args.map((a, i) => (
+              <div key={i} className={`s-arg${a.qual ? ' qual' : ''}`}>
+                <div className="sa-title">{a.title}</div>
+                <div className="sa-body">{a.body}</div>
+                {a.num && <div className="sa-num">{a.num}</div>}
+              </div>
+            ))}
+          </div>
+          <div className="s-section-label">Projection highlights</div>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="s-table">
+              <thead><tr><th>Year</th><th>Trad CV (pre-tax)</th><th>Roth CV (tax-free)</th><th>Traditional total wealth</th><th>Roth total wealth</th><th>Roth advantage</th></tr></thead>
+              <tbody>
+                {tableRows.map(row => (
+                  <tr key={row.yr}>
+                    <td>{row.yr === liq ? `Yr ${row.yr} (liquidation)` : `Yr ${row.yr}`}</td>
+                    <td>{fmt(row.tradCV)}</td><td>{fmt(row.rothCV)}</td>
+                    <td>{fmt(row.tradW)}</td><td>{fmt(row.rothW)}</td>
+                    <td className={row.adv >= 0 ? 's-adv-pos' : 's-adv-neg'}>{fmt(row.adv)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="s-disclosure">This analysis is for illustrative purposes only and does not constitute tax, legal, or investment advice. Actual results will vary based on future tax rates, crediting rates, and individual circumstances. Tax treatment assumes all Roth IRA distributions are qualified (account held 5+ years, owner age 59½ or older). Required minimum distribution amounts are estimates based on the IRS Uniform Lifetime Table and prior year-end balances. Clients should consult a qualified tax advisor before making conversion decisions.</div>
+          <div className="s-footer"><span className="s-footer-diamond" /><span className="s-footer-text">The Annuity Edge — theannuityedge.com</span></div>
+        </>
+      );
+    }
+
+    // ─── main component ───────────────────────────────────────────────────────
+    function RothConversionCalculator() {
+      const [pv,         setPv]         = useState(100000);
+      const [rate,       setRate]       = useState(5);
+      const [acc,        setAcc]        = useState(1);
+      const [liq,        setLiq]        = useState(15);
+      const [tax,        setTax]        = useState(24);
+      const [taxd,       setTaxd]       = useState(24);
+      const [wd,         setWd]         = useState(0);
+      const [outsideTax, setOutsideTax] = useState(false);
+      const [rmdMode,    setRmdMode]    = useState(false);
+      const [startAge,   setStartAge]   = useState(65);
+      const [showExp,    setShowExp]    = useState(true);
+      const [showSum,    setShowSum]    = useState(false);
+
+      const effectiveLiq = Math.max(liq, acc + 1);
+
+      const data = useMemo(
+        () => compute(pv, rate / 100, acc, effectiveLiq, tax / 100, taxd / 100, wd / 100, outsideTax, rmdMode, startAge),
+        [pv, rate, acc, effectiveLiq, tax, taxd, wd, outsideTax, rmdMode, startAge]
+      );
+
+      const chartRef     = useRef(null);
+      const chartInstRef = useRef(null);
+
+      useEffect(() => {
+        if (!chartRef.current) return;
+        if (chartInstRef.current) { chartInstRef.current.destroy(); chartInstRef.current = null; }
+        const { chartLabels, chartTradCV, chartTradTotal, chartRothTotal, vLines } = data;
+        const vLinePlugin = {
+          id: 'taeVLines',
+          afterDraw(chart) {
+            const { ctx, chartArea: { top, bottom }, scales: { x } } = chart;
+            vLines.forEach(({ index, label, color }) => {
+              const px = x.getPixelForValue(index);
+              ctx.save();
+              ctx.beginPath(); ctx.setLineDash([4, 3]);
+              ctx.strokeStyle = color; ctx.lineWidth = 1.5;
+              ctx.moveTo(px, top); ctx.lineTo(px, bottom); ctx.stroke();
+              ctx.setLineDash([]);
+              ctx.fillStyle = color; ctx.font = '600 10px "Source Sans 3", sans-serif';
+              ctx.textAlign = 'left'; ctx.textBaseline = 'top';
+              ctx.fillText(label, px + 4, top + 4);
+              ctx.restore();
+            });
+          },
+        };
+        chartInstRef.current = new Chart(chartRef.current, {
+          type: 'line',
+          data: { labels: chartLabels, datasets: [
+            { label: 'Traditional CV (gross, pre-tax)', data: chartTradCV,    borderColor: '#aaaaaa', borderDash: [5,4], borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: false },
+            { label: 'Traditional total wealth',        data: chartTradTotal, borderColor: '#555555', borderWidth: 2,   pointRadius: 0, tension: 0.3, fill: false },
+            { label: 'Roth total wealth',               data: chartRothTotal, borderColor: '#002956', borderWidth: 2.5, pointRadius: 0, tension: 0.3, fill: false },
+          ]},
+          plugins: [vLinePlugin],
+          options: {
+            responsive: true, maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ' ' + ctx.dataset.label + ': ' + fmt(ctx.parsed.y) } } },
+            scales: {
+              x: { grid: { color: 'rgba(0,0,0,0.06)' }, ticks: { color: '#888', font: { size: 11 }, maxTicksLimit: 14, autoSkip: true } },
+              y: { grid: { color: 'rgba(0,0,0,0.06)' }, ticks: { color: '#888', font: { size: 11 }, callback: v => fmtK(v) } },
+            },
+          },
+        });
+        return () => { if (chartInstRef.current) { chartInstRef.current.destroy(); chartInstRef.current = null; } };
+      }, [data]);
+
+      const { rows, last, taxPaid, rothStart, yr0TradWealth, yr0RothWealth, yr0Adv, finalAdv } = data;
+      const ledgerRows = buildLedgerRows(rows, wd / 100, rmdMode);
+      const rateDiff   = Math.round(taxd - tax);
+      const rateNote   = rateDiff > 0
+        ? `Distribution rate is <strong>${rateDiff}pts higher</strong> than conversion rate — amplifies the Roth advantage.`
+        : rateDiff < 0
+        ? `Distribution rate is <strong>${Math.abs(rateDiff)}pts lower</strong> than conversion rate — reduces the Roth advantage.`
+        : `Rates are equal — Roth advantage driven by tax-free compounding on CV and withdrawal tax drag${rmdMode ? ', plus RMD avoidance' : ''}.`;
+      const noteHtml = `<strong>Conversion tax is a Roth outlay</strong> — ${outsideTax ? `paid from outside funds (${fmt(taxPaid)}), so Roth contract starts at the full ${fmt(pv)} but that ${fmt(taxPaid)} is deducted from Roth total wealth in every row. Both accounts start at equal net wealth of ${fmt(yr0RothWealth)}. The Roth advantage over time comes purely from ${fmt(pv)} compounding tax-free instead of ${fmt(rothStart)}.` : `deducted from the contract, so Roth starts at ${fmt(rothStart)} vs. ${fmt(pv)} for the traditional.`} Traditional CV is pre-tax throughout. <strong>Total wealth</strong> = cumulative after-tax cash received + remaining CV (traditional discounted at ${taxd}% distribution rate; Roth net of external tax outlay). At <strong>Yr ${effectiveLiq} liquidation</strong>, remaining CV is fully surrendered — traditional pays tax, Roth is tax-free. ${rateNote}`;
+
+      return (
+        <>
+          <div id="tae-roth-calc">
+            <div className="tae-container">
+              <div className="tae-header">
+                <div className="tae-logo"><img src="https://theannuityedge.com/wp-content/themes/lifeproductreview/images/color.png" alt="The Annuity Edge" /></div>
+                <div className="tae-badge">Calculator tool</div>
+              </div>
+              <h1>Roth conversion calculator</h1>
+              <p className="subtitle">Year-by-year ledger — traditional IRA vs. Roth IRA after-tax outcomes</p>
+
+              <div className={`explainer-toggle${showExp ? ' open' : ''}`} onClick={() => setShowExp(v => !v)}>
+                <span className="et-label">Why consider a Roth conversion?</span>
+                <i className="ti ti-chevron-down et-chevron" aria-hidden="true" />
+              </div>
+              {showExp && (
+                <div className="explainer-grid">
+                  <ExCard icon="ti-receipt-off"            title="Tax-free distributions"     body="All Roth withdrawals are tax-free once the account qualifies. Traditional IRA distributions are taxed as ordinary income at your rate in the year taken — reducing every dollar of spendable income." />
+                  <ExCard icon="ti-calendar-off"           title="No required distributions"  body="Roth IRAs have no required minimum distributions during the owner's lifetime. Traditional IRAs force taxable income starting at age 73 — whether you need the money or not — potentially pushing you into a higher bracket." />
+                  <ExCard icon="ti-lock"                   title="Lock in today's tax rate"   body="Converting now pays tax at today's known rate on your current balance. If your tax rate rises — through legislation or higher retirement income — every dollar of future growth inside the Roth is permanently protected." />
+                  <ExCard icon="ti-trending-up"            title="Full base compounding"      body="Paying conversion tax from outside the contract puts 100% of your contract value to work tax-free. More dollars compounding at the same rate — for the full projection period — generates meaningfully more tax-free wealth over time." />
+                  <ExCard icon="ti-building-bank"          title="Estate and legacy planning" body="Roth assets pass to beneficiaries tax-free. Inherited traditional IRAs require full distribution within 10 years under current law — taxed as ordinary income to heirs, often at their peak earning years." />
+                  <ExCard icon="ti-adjustments-horizontal" title="Tax diversification"        body="A Roth account alongside pre-tax assets gives you control over taxable income in retirement — staying below bracket thresholds, managing Medicare IRMAA surcharges, and reducing the taxable portion of Social Security." />
+                </div>
+              )}
+
+              <div className="section-label">Inputs</div>
+              <div className="controls-grid">
+                <Slider label="Starting value"           min={10000}  max={500000} step={5000} value={pv}           onChange={setPv}   format={v => '$' + Number(v).toLocaleString()} />
+                <Slider label="Assumed growth rate"      min={1}      max={12}     step={0.5}  value={rate}         onChange={setRate} format={v => Number(v).toFixed(1) + '%'} />
+                <Slider label="Liquidation year"         min={acc+2}  max={40}     step={1}    value={effectiveLiq} onChange={setLiq}  format={v => 'Yr ' + v} />
+                <Slider label="Tax rate at conversion"   min={10}     max={45}     step={1}    value={tax}          onChange={setTax}  format={v => v + '%'} />
+                <Slider label="Withdrawal start year"    min={0}      max={30}     step={1}    value={acc}          onChange={setAcc}  format={v => 'Yr ' + v} />
+                <Slider label="Tax rate at distribution" min={10}     max={45}     step={1}    value={taxd}         onChange={setTaxd} format={v => v + '%'} />
+                <Slider label="Annual withdrawal %"      min={0}      max={20}     step={0.5}  value={wd}           onChange={setWd}   format={v => Number(v).toFixed(1) + '%'} />
+              </div>
+              <div className="checks">
+                <div className="check-row">
+                  <label className="check-label"><input type="checkbox" checked={outsideTax} onChange={e => setOutsideTax(e.target.checked)} /><span>Tax paid from outside contract</span></label>
+                  <div className="check-sub">Roth starts at full value — conversion tax funded from external assets.</div>
+                </div>
+                <div className="check-row">
+                  <label className="check-label"><input type="checkbox" checked={rmdMode} onChange={e => setRmdMode(e.target.checked)} /><span>Apply RMDs to traditional IRA</span></label>
+                  <div className="check-sub">Forces IRS required minimum distributions starting at age 73. Roth has no RMDs.</div>
+                  {rmdMode && (
+                    <div className="age-ctrl visible">
+                      <label>Current age</label>
+                      <input type="range" min={50} max={85} step={1} value={startAge} onChange={e => setStartAge(Number(e.target.value))} />
+                      <span className="val">{startAge}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <hr />
+
+              <div className="section-label">Summary at liquidation</div>
+              <div className="metric-grid">
+                <div className="metric"><div className="mlabel">Conversion tax (Roth outlay)</div><div className="mval">{fmt(taxPaid)}</div><div className="msub">{outsideTax ? 'external — deducted from Roth total wealth' : `from contract — Roth starts at ${fmt(rothStart)}`}</div></div>
+                <div className="metric"><div className="mlabel">Traditional total at liquidation</div><div className="mval">{fmt(last.tradTotalWealth)}</div><div className="msub">all cash, after tax</div></div>
+                <div className="metric"><div className="mlabel">Roth total at liquidation</div><div className="mval">{fmt(last.rothTotalWealth)}</div><div className="msub">all cash, tax-free</div></div>
+                <div className={`metric${finalAdv >= 0 ? ' accent' : ''}`}><div className="mlabel">{finalAdv >= 0 ? 'Roth net advantage' : 'Traditional net advantage'}</div><div className="mval">{fmt(Math.abs(finalAdv))}</div><div className="msub">total after-tax wealth difference</div></div>
+              </div>
+
+              <div className="legend">
+                <span><span className="swatch dashed" />Traditional IRA (gross CV, pre-tax)</span>
+                <span><span className="swatch" style={{ background: '#555555' }} />Traditional total wealth (after-tax)</span>
+                <span><span className="swatch" style={{ background: '#002956' }} />Roth total wealth (tax-free)</span>
+              </div>
+              <div className="chart-wrap">
+                <canvas ref={chartRef} role="img" aria-label="Line chart comparing traditional IRA and Roth IRA total wealth." />
+              </div>
+              <hr />
+
+              <div className="section-label">Year-by-year ledger</div>
+              <div className="table-wrap">
+                <table>
+                  <thead>
+                    <tr>
+                      <th rowSpan={2} style={{ textAlign: 'left', verticalAlign: 'bottom', background: '#032244' }}>Year</th>
+                      <th colSpan={4} className="th-group th-trad">Traditional IRA (pre-tax CV)</th>
+                      <th colSpan={3} className="th-group th-roth">Roth IRA (tax-free CV)</th>
+                      <th colSpan={3} className="th-group th-adv">Total wealth (CV + cumul W)</th>
+                    </tr>
+                    <tr><th>EOY CV</th><th>Withdrawal</th><th>Tax</th><th>After-tax W</th><th>EOY CV</th><th>Withdrawal</th><th>After-tax W</th><th>Traditional</th><th>Roth</th><th>Advantage</th></tr>
+                  </thead>
+                  <tbody>
+                    <tr className="row-yr0">
+                      <td>Yr 0</td><td>{fmt(pv)}</td><td>—</td><td>—</td><td>—</td>
+                      <td>{fmt(rothStart)}</td><td>—</td><td>—</td>
+                      <td>{fmt(yr0TradWealth)}</td><td>{fmt(yr0RothWealth)}</td>
+                      <td className={yr0Adv >= 0 ? 'adv-pos' : 'adv-neg'}>{fmt(yr0Adv)}</td>
+                    </tr>
+                    {ledgerRows}
+                  </tbody>
+                </table>
+              </div>
+              <div className="note" dangerouslySetInnerHTML={{ __html: noteHtml }} />
+
+              <div className="summary-btn-row">
+                <button onClick={() => setShowSum(v => !v)}>{showSum ? 'Hide client summary' : 'View client summary'}</button>
+              </div>
+              {showSum && (
+                <div className="summary-wrap visible">
+                  <div className="summary-actions">
+                    <button onClick={() => setShowSum(false)}>Close</button>
+                    <button className="btn-print" onClick={() => window.print()}>Print / save PDF</button>
+                  </div>
+                  <div className="summary">
+                    <SummaryContent data={data} pv={pv} rate={rate} acc={acc} liq={effectiveLiq} tax={tax} taxd={taxd} wd={wd} outsideTax={outsideTax} rmdMode={rmdMode} />
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </>
+      );
+    }
+
+    // ─── mount ────────────────────────────────────────────────────────────────
+    document.getElementById('loading').remove();
+    ReactDOM.createRoot(document.getElementById('root')).render(<RothConversionCalculator />);
+  </script>
+
+  <style>
+    #tae-roth-calc {
+      --tae-bg:             #ffffff;
+      --tae-bg-secondary:   #f5f4f0;
+      --tae-bg-tertiary:    #eeece6;
+      --tae-text-primary:   #262626;
+      --tae-text-secondary: #555555;
+      --tae-text-tertiary:  #888780;
+      --tae-border:         rgba(0,0,0,0.12);
+      --tae-border-mid:     rgba(0,0,0,0.22);
+      --tae-navy:           #002956;
+      --tae-navy-deep:      #032244;
+      --tae-navy-light:     #dce8f5;
+      --tae-gold:           #FFBE58;
+      --tae-font:           'Source Sans 3', 'Source Sans Pro', system-ui, sans-serif;
+      --tae-font-head:      miller-display, Georgia, serif;
+      font-family: var(--tae-font); background: var(--tae-bg); color: var(--tae-text-primary);
+      font-size: 17px; line-height: 1.6; padding: 2.5rem 1rem; box-sizing: border-box;
+    }
+    #tae-roth-calc *, #tae-roth-calc *::before, #tae-roth-calc *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    #tae-roth-calc .tae-container { max-width: 1020px; margin: 0 auto; background: var(--tae-bg); border: 1px solid var(--tae-border); padding: 2.5rem 2.5rem 3rem; }
+    #tae-roth-calc .tae-header { display: flex; align-items: center; justify-content: space-between; border-bottom: 2px solid var(--tae-navy); padding-bottom: 1rem; margin-bottom: 1.75rem; }
+    #tae-roth-calc .tae-logo img { height: 52px; width: auto; display: block; }
+    #tae-roth-calc .tae-badge { font-family: var(--tae-font); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--tae-text-tertiary); border: 1px solid var(--tae-border-mid); padding: 3px 8px; }
+    #tae-roth-calc h1 { font-family: var(--tae-font-head); font-size: 26px; font-weight: 600; color: var(--tae-text-primary); letter-spacing: -0.01em; margin-bottom: 0.25rem; }
+    #tae-roth-calc .subtitle { font-size: 14px; color: var(--tae-text-secondary); margin-bottom: 2rem; }
+    #tae-roth-calc .section-label { font-size: 11px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: var(--tae-text-secondary); margin: 1.75rem 0 0.75rem; }
+    #tae-roth-calc .explainer-toggle { display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none; margin-bottom: 0.75rem; }
+    #tae-roth-calc .explainer-toggle .et-label { font-size: 11px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: var(--tae-text-secondary); }
+    #tae-roth-calc .explainer-toggle .et-chevron { font-size: 14px; color: var(--tae-text-tertiary); transition: transform 0.2s; }
+    #tae-roth-calc .explainer-toggle.open .et-chevron { transform: rotate(180deg); }
+    #tae-roth-calc .explainer-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 2rem; }
+    #tae-roth-calc .ex-card { background: var(--tae-bg-secondary); border-left: 3px solid var(--tae-gold); padding: 0.85rem 1rem; }
+    #tae-roth-calc .ex-card .ec-head { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+    #tae-roth-calc .ex-card .ec-head i { font-size: 16px; color: var(--tae-navy); flex-shrink: 0; }
+    #tae-roth-calc .ex-card .ec-title { font-size: 13px; font-weight: 600; color: var(--tae-text-primary); }
+    #tae-roth-calc .ex-card .ec-body  { font-size: 12px; color: var(--tae-text-secondary); line-height: 1.55; }
+    #tae-roth-calc .controls-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 2.5rem; }
+    #tae-roth-calc .ctrl { display: flex; align-items: center; gap: 12px; margin-bottom: 0.85rem; }
+    #tae-roth-calc .ctrl label { font-size: 14px; color: var(--tae-text-secondary); width: 185px; flex-shrink: 0; }
+    #tae-roth-calc .ctrl input[type=range] { flex: 1; accent-color: var(--tae-navy); cursor: pointer; }
+    #tae-roth-calc .ctrl .val { font-size: 14px; font-weight: 600; min-width: 72px; text-align: right; color: var(--tae-text-primary); }
+    #tae-roth-calc .checks { display: flex; flex-wrap: wrap; gap: 0 2.5rem; margin-top: 1rem; }
+    #tae-roth-calc .check-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 0.75rem; }
+    #tae-roth-calc .check-label { display: flex; align-items: center; gap: 10px; cursor: pointer; user-select: none; }
+    #tae-roth-calc .check-label input[type=checkbox] { width: 16px; height: 16px; cursor: pointer; accent-color: var(--tae-navy); flex-shrink: 0; }
+    #tae-roth-calc .check-label span { font-size: 14px; color: var(--tae-text-primary); font-weight: 600; }
+    #tae-roth-calc .check-sub { font-size: 13px; color: var(--tae-text-secondary); padding-left: 26px; line-height: 1.4; }
+    #tae-roth-calc .age-ctrl { display: none; align-items: center; gap: 12px; margin-top: 0.5rem; padding-left: 26px; }
+    #tae-roth-calc .age-ctrl.visible { display: flex; }
+    #tae-roth-calc .age-ctrl label { font-size: 13px; color: var(--tae-text-secondary); width: 110px; flex-shrink: 0; }
+    #tae-roth-calc .age-ctrl input[type=range] { flex: 1; accent-color: var(--tae-navy); cursor: pointer; }
+    #tae-roth-calc .age-ctrl .val { font-size: 13px; font-weight: 600; min-width: 50px; text-align: right; color: var(--tae-text-primary); }
+    #tae-roth-calc hr { border: none; border-top: 1px solid var(--tae-border); margin: 2rem 0; }
+    #tae-roth-calc .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; margin: 1.25rem 0; }
+    #tae-roth-calc .metric { background: var(--tae-bg-secondary); padding: 0.9rem 1rem; }
+    #tae-roth-calc .metric .mlabel { font-size: 11px; color: var(--tae-text-secondary); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.05em; }
+    #tae-roth-calc .metric .mval   { font-size: 20px; font-weight: 600; color: var(--tae-text-primary); }
+    #tae-roth-calc .metric .msub   { font-size: 11px; color: var(--tae-text-tertiary); margin-top: 3px; }
+    #tae-roth-calc .metric.accent  { background: var(--tae-navy-light); border-left: 3px solid var(--tae-navy); }
+    #tae-roth-calc .metric.accent .mval   { color: var(--tae-navy); }
+    #tae-roth-calc .metric.accent .mlabel { color: var(--tae-navy); }
+    #tae-roth-calc .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 13px; color: var(--tae-text-secondary); margin-bottom: 0.5rem; }
+    #tae-roth-calc .legend span { display: flex; align-items: center; gap: 6px; }
+    #tae-roth-calc .swatch { width: 22px; height: 2.5px; flex-shrink: 0; }
+    #tae-roth-calc .swatch.dashed { background: repeating-linear-gradient(90deg, #aaa 0, #aaa 4px, transparent 4px, transparent 8px); }
+    #tae-roth-calc .chart-wrap { position: relative; width: 100%; height: 280px; margin: 1rem 0 0.5rem; }
+    #tae-roth-calc .table-wrap { overflow-x: auto; margin-top: 0.5rem; -webkit-overflow-scrolling: touch; }
+    #tae-roth-calc table { width: 100%; border-collapse: collapse; font-size: 13px; table-layout: fixed; min-width: 820px; }
+    #tae-roth-calc thead th { background: var(--tae-navy); color: #fff; font-weight: 600; font-size: 11px; text-align: right; padding: 8px 10px; border-right: 1px solid rgba(255,255,255,0.15); white-space: nowrap; }
+    #tae-roth-calc thead th:first-child { text-align: left; width: 76px; }
+    #tae-roth-calc thead th:last-child  { border-right: none; }
+    #tae-roth-calc thead .th-group { text-align: center; font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; padding: 6px 10px 4px; border-bottom: 1px solid rgba(255,255,255,0.2); border-right: 1px solid rgba(255,255,255,0.2); }
+    #tae-roth-calc .th-trad { border-bottom-color: #aaa !important; }
+    #tae-roth-calc .th-roth { color: #FFBE58 !important; border-bottom-color: #FFBE58 !important; }
+    #tae-roth-calc .th-adv  { color: rgba(255,255,255,0.6) !important; }
+    #tae-roth-calc tbody tr { border-bottom: 1px solid rgba(0,0,0,0.07); }
+    #tae-roth-calc tbody td { text-align: right; padding: 6px 10px; color: var(--tae-text-primary); white-space: nowrap; font-size: 13px; }
+    #tae-roth-calc tbody td:first-child { text-align: left; color: var(--tae-text-secondary); font-size: 12px; }
+    #tae-roth-calc .row-yr0 td { background: var(--tae-bg-secondary); color: var(--tae-text-tertiary) !important; font-style: italic; }
+    #tae-roth-calc .row-liq td { background: var(--tae-navy-light); font-weight: 600; }
+    #tae-roth-calc .row-liq td:first-child { color: var(--tae-navy) !important; }
+    #tae-roth-calc .phase-divider td { background: var(--tae-bg-secondary) !important; color: var(--tae-text-tertiary) !important; font-size: 10px !important; font-weight: 600 !important; letter-spacing: 0.06em; text-transform: uppercase; padding: 4px 10px !important; text-align: left !important; border-bottom: none !important; }
+    #tae-roth-calc .tag { display: inline-block; font-size: 9px; font-weight: 600; padding: 1px 5px; margin-left: 4px; vertical-align: middle; letter-spacing: 0.04em; text-transform: uppercase; }
+    #tae-roth-calc .tag-rmd { background: #FFBE58; color: #5a3a00; }
+    #tae-roth-calc .adv-pos { color: var(--tae-navy); font-weight: 600; }
+    #tae-roth-calc .adv-neg { color: #8b2000; font-weight: 600; }
+    #tae-roth-calc .note { font-size: 13px; color: var(--tae-text-secondary); margin-top: 1.25rem; padding: 0.85rem 1rem; background: var(--tae-bg-secondary); border-left: 3px solid var(--tae-navy); line-height: 1.6; }
+    #tae-roth-calc .note strong { color: var(--tae-text-primary); font-weight: 600; }
+    #tae-roth-calc .summary-btn-row { text-align: center; margin: 2.5rem 0 0; }
+    #tae-roth-calc .summary-btn-row button { font-family: var(--tae-font); font-size: 14px; font-weight: 600; padding: 10px 28px; border: 1px solid var(--tae-navy); background: var(--tae-bg); color: var(--tae-navy); cursor: pointer; letter-spacing: 0.02em; }
+    #tae-roth-calc .summary-btn-row button:hover { background: var(--tae-navy-light); }
+    #tae-roth-calc .summary-wrap { display: none; margin-top: 2.5rem; }
+    #tae-roth-calc .summary-wrap.visible { display: block; }
+    #tae-roth-calc .summary { background: #fff; color: #262626; border: 1px solid rgba(0,0,0,0.15); padding: 2.5rem 2.5rem 2rem; font-family: var(--tae-font); }
+    #tae-roth-calc .summary-actions { display: flex; gap: 10px; justify-content: flex-end; margin-bottom: 1.25rem; }
+    #tae-roth-calc .summary-actions button { font-family: var(--tae-font); font-size: 13px; font-weight: 600; padding: 8px 18px; cursor: pointer; border: 1px solid rgba(0,0,0,0.22); background: #f5f4f0; color: #262626; }
+    #tae-roth-calc .summary-actions .btn-print { background: #002956; color: #fff; border-color: #002956; }
+    #tae-roth-calc .summary-actions .btn-print:hover { background: #032244; }
+    #tae-roth-calc .summary-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem; border-bottom: 2px solid #002956; padding-bottom: 1rem; }
+    #tae-roth-calc .sh-logo { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    #tae-roth-calc .sh-diamond { width: 8px; height: 8px; background: #FFBE58; transform: rotate(45deg); display: inline-block; flex-shrink: 0; }
+    #tae-roth-calc .sh-logo-text { font-family: var(--tae-font-head); font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #002956; }
+    #tae-roth-calc .summary-header h2 { font-family: var(--tae-font-head); font-size: 22px; font-weight: 600; color: #262626; margin-bottom: 3px; }
+    #tae-roth-calc .summary-header .sh-sub   { font-size: 13px; color: #888780; }
+    #tae-roth-calc .summary-header .sh-right { text-align: right; font-size: 12px; color: #888780; line-height: 1.6; }
+    #tae-roth-calc .s-section-label { font-size: 10px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: #888780; margin: 1.75rem 0 0.75rem; }
+    #tae-roth-calc .s-metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 1.5rem; }
+    #tae-roth-calc .s-metric { background: #f5f4f0; padding: 0.75rem 1rem; }
+    #tae-roth-calc .s-metric .sm-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; color: #888780; margin-bottom: 3px; }
+    #tae-roth-calc .s-metric .sm-val   { font-size: 17px; font-weight: 600; color: #262626; }
+    #tae-roth-calc .s-metric .sm-sub   { font-size: 10px; color: #888780; margin-top: 2px; }
+    #tae-roth-calc .s-metric.hero { background: #dce8f5; border-left: 3px solid #002956; grid-column: span 3; display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.25rem; }
+    #tae-roth-calc .s-metric.hero .sm-label { color: #002956; margin-bottom: 0; font-size: 11px; }
+    #tae-roth-calc .s-metric.hero .sm-val   { font-size: 28px; font-weight: 600; color: #002956; }
+    #tae-roth-calc .s-metric.hero .sm-sub   { color: rgba(0,41,86,0.65); }
+    #tae-roth-calc .s-args { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 1.5rem; }
+    #tae-roth-calc .s-arg { background: #f5f4f0; padding: 0.9rem 1rem; border-left: 3px solid #FFBE58; }
+    #tae-roth-calc .s-arg.qual { border-left-color: rgba(0,0,0,0.15); }
+    #tae-roth-calc .s-arg .sa-title { font-size: 13px; font-weight: 600; color: #262626; margin-bottom: 4px; }
+    #tae-roth-calc .s-arg .sa-body  { font-size: 12px; color: #555555; line-height: 1.55; }
+    #tae-roth-calc .s-arg .sa-num   { font-size: 13px; font-weight: 600; color: #002956; margin-top: 5px; }
+    #tae-roth-calc .s-table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 1.5rem; min-width: 500px; }
+    #tae-roth-calc .s-table thead th { background: #002956; color: #fff; font-weight: 600; padding: 7px 10px; text-align: right; white-space: nowrap; font-size: 11px; }
+    #tae-roth-calc .s-table thead th:first-child { text-align: left; }
+    #tae-roth-calc .s-table tbody td { padding: 6px 10px; text-align: right; border-bottom: 1px solid rgba(0,0,0,0.07); color: #262626; }
+    #tae-roth-calc .s-table tbody td:first-child { text-align: left; color: #888780; }
+    #tae-roth-calc .s-table tbody tr:last-child td { font-weight: 600; background: #dce8f5; border-bottom: none; }
+    #tae-roth-calc .s-table .s-adv-pos { color: #002956; font-weight: 600; }
+    #tae-roth-calc .s-table .s-adv-neg { color: #8b2000; font-weight: 600; }
+    #tae-roth-calc .s-disclosure { font-size: 11px; color: #888780; line-height: 1.6; border-top: 1px solid rgba(0,0,0,0.1); padding-top: 1rem; margin-top: 1rem; }
+    #tae-roth-calc .s-footer { display: flex; align-items: center; gap: 7px; margin-top: 1.25rem; }
+    #tae-roth-calc .s-footer-diamond { width: 7px; height: 7px; background: #FFBE58; transform: rotate(45deg); display: inline-block; }
+    #tae-roth-calc .s-footer-text { font-family: var(--tae-font-head); font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #002956; }
+
+    @media (max-width: 640px) {
+      #tae-roth-calc .tae-container { padding: 1.25rem 1rem 2rem; }
+      #tae-roth-calc h1 { font-size: 20px; }
+      #tae-roth-calc .controls-grid { grid-template-columns: 1fr; }
+      #tae-roth-calc .ctrl label { width: 150px; font-size: 13px; }
+      #tae-roth-calc .explainer-grid { grid-template-columns: 1fr; }
+      #tae-roth-calc .metric-grid { grid-template-columns: 1fr 1fr; }
+      #tae-roth-calc .chart-wrap { height: 220px; }
+      #tae-roth-calc .s-metric-grid { grid-template-columns: 1fr 1fr; }
+      #tae-roth-calc .s-metric.hero { grid-column: span 2; flex-direction: column; gap: 6px; }
+      #tae-roth-calc .s-args { grid-template-columns: 1fr; }
+      #tae-roth-calc .summary-header { flex-direction: column; gap: 0.75rem; }
+      #tae-roth-calc .summary-header .sh-right { text-align: left; }
+      #tae-roth-calc .summary { padding: 1.25rem 1rem; }
+      #tae-roth-calc .tae-header { flex-direction: column; align-items: flex-start; gap: 0.75rem; }
+    }
+    @media (min-width: 641px) and (max-width: 860px) {
+      #tae-roth-calc .explainer-grid { grid-template-columns: 1fr 1fr; }
+      #tae-roth-calc .controls-grid  { grid-template-columns: 1fr; }
+    }
+    @media print {
+      #tae-roth-calc .tae-container > *:not(.summary-wrap) { display: none !important; }
+      #tae-roth-calc .summary-wrap  { display: block !important; margin: 0; }
+      #tae-roth-calc .summary       { border: none; padding: 1.5rem; }
+      #tae-roth-calc .summary-actions, #tae-roth-calc .summary-btn-row { display: none !important; }
+    }
+  </style>
+</body>
+</html>
