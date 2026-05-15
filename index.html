@@ -454,7 +454,7 @@
                   <tbody>
                     <tr className="row-yr0">
                       <td>Yr 0</td><td>{fmt(pv)}</td><td>—</td><td>—</td><td>—</td>
-                      <td>{fmt(rothStart)}</td><td>—</td><td>—</td>
+                      <td>{fmt(rothStart)}</td><td>—</td>
                       <td>{fmt(yr0TradWealth)}</td><td>{fmt(yr0RothWealth)}</td>
                       <td className={yr0Adv >= 0 ? 'adv-pos' : 'adv-neg'}>{fmt(yr0Adv)}</td>
                     </tr>
@@ -488,32 +488,6 @@
     document.getElementById('loading').remove();
     ReactDOM.createRoot(document.getElementById('root')).render(<RothConversionCalculator />);
 
-    // ─── dynamic iframe height ────────────────────────────────────────────────
-    // Posts the tight bottom edge of the calculator element to the WordPress
-    // parent — more accurate than scrollHeight which can include stale margins.
-    // Pair with the updated WordPress embed snippet (see deploy notes).
-    (function () {
-      let lastH = 0, timer;
-      function reportHeight() {
-        clearTimeout(timer);
-        timer = setTimeout(function () {
-          const el = document.getElementById('tae-roth-calc');
-          const h = el
-            ? Math.ceil(el.getBoundingClientRect().bottom + window.scrollY) + 32
-            : Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
-          if (h !== lastH) {
-            lastH = h;
-            window.parent.postMessage({ type: 'rothCalcHeight', height: h }, '*');
-          }
-        }, 80);
-      }
-      if (typeof ResizeObserver !== 'undefined') {
-        new ResizeObserver(reportHeight).observe(document.getElementById('root') || document.body);
-      }
-      window.addEventListener('resize', reportHeight);
-      // Delay initial report to allow React/Babel to finish first paint
-      setTimeout(reportHeight, 400);
-    })();
   </script>
 
   <style>
