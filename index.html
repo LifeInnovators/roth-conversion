@@ -377,6 +377,11 @@
               <h1>Roth conversion calculator</h1>
               <p className="subtitle">Year-by-year ledger — traditional IRA vs. Roth IRA after-tax outcomes</p>
 
+              <div className="tool-disclaimer">
+                <p>This tool models the year-by-year comparison between a traditional IRA annuity and a Roth IRA annuity under identical growth assumptions, with tax rates set independently for the conversion year and distribution years. It is a <strong>planning tool, not an illustration</strong> — designed to show the structural logic of a conversion at stated rate assumptions before any product recommendation is made.</p>
+                <p>It does not model year-to-year variation in tax rates, IRMAA thresholds, state income tax, the pro-rata rule, the widow's penalty, or the specific product features of any annuity contract. Those variables require a tax professional and a product-specific illustration.</p>
+              </div>
+
               <div className={`explainer-toggle${showExp ? ' open' : ''}`} onClick={() => setShowExp(v => !v)}>
                 <span className="et-label">Why consider a Roth conversion?</span>
                 <i className="ti ti-chevron-down et-chevron" aria-hidden="true" />
@@ -516,7 +521,11 @@
     #tae-roth-calc .tae-logo img { height: 52px; width: auto; display: block; }
     #tae-roth-calc .tae-badge { font-family: var(--tae-font); font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--tae-text-tertiary); border: 1px solid var(--tae-border-mid); padding: 3px 8px; }
     #tae-roth-calc h1 { font-family: var(--tae-font-head); font-size: 26px; font-weight: 600; color: var(--tae-text-primary); letter-spacing: -0.01em; margin-bottom: 0.25rem; }
-    #tae-roth-calc .subtitle { font-size: 14px; color: var(--tae-text-secondary); margin-bottom: 2rem; }
+    #tae-roth-calc .subtitle { font-size: 14px; color: var(--tae-text-secondary); margin-bottom: 1.5rem; }
+    #tae-roth-calc .tool-disclaimer { background: var(--tae-bg-secondary); border-left: 3px solid var(--tae-navy); padding: 1rem 1.25rem; font-size: 13px; color: var(--tae-text-secondary); line-height: 1.55; margin-bottom: 1.75rem; }
+    #tae-roth-calc .tool-disclaimer p { margin: 0 0 0.6rem; }
+    #tae-roth-calc .tool-disclaimer p:last-child { margin-bottom: 0; }
+    #tae-roth-calc .tool-disclaimer strong { color: var(--tae-text-primary); font-weight: 600; }
     #tae-roth-calc .section-label { font-size: 11px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: var(--tae-text-secondary); margin: 1.75rem 0 0.75rem; }
     #tae-roth-calc .explainer-toggle { display: flex; align-items: center; justify-content: space-between; cursor: pointer; user-select: none; margin-bottom: 0.75rem; }
     #tae-roth-calc .explainer-toggle .et-label { font-size: 11px; font-weight: 600; letter-spacing: 0.09em; text-transform: uppercase; color: var(--tae-text-secondary); }
