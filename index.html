@@ -23,7 +23,8 @@
 
   <style>
     body { margin: 0; padding: 0; background: #f0efeb; }
-    #root { min-height: 100vh; }
+    /* No min-height on #root — iframe height is driven by content via postMessage */
+    #root { }
     /* Loading indicator while Babel compiles */
     #loading { font-family: system-ui; font-size: 14px; color: #888; padding: 2rem; text-align: center; }
   </style>
@@ -34,7 +35,7 @@
 
   <script type="text/babel">
     // ─── React hooks (from CDN global) ────────────────────────────────────────
-    const { useState, useEffect, useRef, useMemo } = React;
+    const { useState, useEffect, useRef, useMemo, memo } = React;
     // Chart is already a global from the Chart.js CDN script above.
 
     // ─── constants ────────────────────────────────────────────────────────────
@@ -177,8 +178,16 @@
       return out;
     }
 
+    // ─── stable format helpers ────────────────────────────────────────────────
+    // Defined at module scope so Slider (memoized below) gets stable references
+    // and skips re-renders when only unrelated parent state changes.
+    const FMT_DOLLAR = v => '$' + Number(v).toLocaleString();
+    const FMT_RATE   = v => Number(v).toFixed(1) + '%';
+    const FMT_PCT    = v => v + '%';
+    const FMT_YEAR   = v => 'Yr ' + v;
+
     // ─── sub-components ───────────────────────────────────────────────────────
-    function ExCard({ icon, title, body }) {
+    const ExCard = memo(function ExCard({ icon, title, body }) {
       return (
         <div className="ex-card">
           <div className="ec-head">
@@ -188,9 +197,9 @@
           <div className="ec-body">{body}</div>
         </div>
       );
-    }
+    });
 
-    function Slider({ label, min, max, step, value, onChange, format }) {
+    const Slider = memo(function Slider({ label, min, max, step, value, onChange, format }) {
       return (
         <div className="ctrl">
           <label>{label}</label>
@@ -199,9 +208,9 @@
           <span className="val">{format(value)}</span>
         </div>
       );
-    }
+    });
 
-    function SummaryContent({ data, pv, rate, acc, liq, tax, taxd, wd, outsideTax, rmdMode }) {
+    const SummaryContent = memo(function SummaryContent({ data, pv, rate, acc, liq, tax, taxd, wd, outsideTax, rmdMode }) {
       const { rows, last, taxPaid, rothStart, yr0RothWealth, finalAdv } = data;
       const breakEvenYr = rows.find(r => r.advantage >= 0)?.i ?? null;
       const yr0TradW    = pv * (1 - taxd / 100);
@@ -275,7 +284,7 @@
           <div className="s-footer"><span className="s-footer-diamond" /><span className="s-footer-text">The Annuity Edge — theannuityedge.com</span></div>
         </>
       );
-    }
+    });
 
     // ─── main component ───────────────────────────────────────────────────────
     function RothConversionCalculator() {
@@ -327,13 +336,14 @@
         chartInstRef.current = new Chart(chartRef.current, {
           type: 'line',
           data: { labels: chartLabels, datasets: [
-            { label: 'Traditional CV (gross, pre-tax)', data: chartTradCV,    borderColor: '#aaaaaa', borderDash: [5,4], borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: false },
+            { label: 'Traditional CV (gross)',          data: chartTradCV,    borderColor: '#aaaaaa', borderDash: [5,4], borderWidth: 1.5, pointRadius: 0, tension: 0.3, fill: false },
             { label: 'Traditional total wealth',        data: chartTradTotal, borderColor: '#555555', borderWidth: 2,   pointRadius: 0, tension: 0.3, fill: false },
             { label: 'Roth total wealth',               data: chartRothTotal, borderColor: '#002956', borderWidth: 2.5, pointRadius: 0, tension: 0.3, fill: false },
           ]},
           plugins: [vLinePlugin],
           options: {
             responsive: true, maintainAspectRatio: false,
+            layout: { padding: { right: 20 } },
             interaction: { mode: 'index', intersect: false },
             plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ' ' + ctx.dataset.label + ': ' + fmt(ctx.parsed.y) } } },
             scales: {
@@ -383,13 +393,13 @@
 
               <div className="section-label">Inputs</div>
               <div className="controls-grid">
-                <Slider label="Starting value"           min={10000}  max={500000} step={5000} value={pv}           onChange={setPv}   format={v => '$' + Number(v).toLocaleString()} />
-                <Slider label="Assumed growth rate"      min={1}      max={12}     step={0.5}  value={rate}         onChange={setRate} format={v => Number(v).toFixed(1) + '%'} />
-                <Slider label="Liquidation year"         min={acc+2}  max={40}     step={1}    value={effectiveLiq} onChange={setLiq}  format={v => 'Yr ' + v} />
-                <Slider label="Tax rate at conversion"   min={10}     max={45}     step={1}    value={tax}          onChange={setTax}  format={v => v + '%'} />
-                <Slider label="Withdrawal start year"    min={0}      max={30}     step={1}    value={acc}          onChange={setAcc}  format={v => 'Yr ' + v} />
-                <Slider label="Tax rate at distribution" min={10}     max={45}     step={1}    value={taxd}         onChange={setTaxd} format={v => v + '%'} />
-                <Slider label="Annual withdrawal %"      min={0}      max={20}     step={0.5}  value={wd}           onChange={setWd}   format={v => Number(v).toFixed(1) + '%'} />
+                <Slider label="Starting value"           min={10000}  max={500000} step={5000} value={pv}           onChange={setPv}   format={FMT_DOLLAR} />
+                <Slider label="Assumed growth rate"      min={1}      max={12}     step={0.5}  value={rate}         onChange={setRate} format={FMT_RATE} />
+                <Slider label="Liquidation year"         min={acc+2}  max={40}     step={1}    value={effectiveLiq} onChange={setLiq}  format={FMT_YEAR} />
+                <Slider label="Tax rate at conversion"   min={10}     max={45}     step={1}    value={tax}          onChange={setTax}  format={FMT_PCT} />
+                <Slider label="Withdrawal start year"    min={0}      max={30}     step={1}    value={acc}          onChange={setAcc}  format={FMT_YEAR} />
+                <Slider label="Tax rate at distribution" min={10}     max={45}     step={1}    value={taxd}         onChange={setTaxd} format={FMT_PCT} />
+                <Slider label="Annual withdrawal %"      min={0}      max={20}     step={0.5}  value={wd}           onChange={setWd}   format={FMT_RATE} />
               </div>
               <div className="checks">
                 <div className="check-row">
@@ -419,9 +429,9 @@
               </div>
 
               <div className="legend">
-                <span><span className="swatch dashed" />Traditional IRA (gross CV, pre-tax)</span>
-                <span><span className="swatch" style={{ background: '#555555' }} />Traditional total wealth (after-tax)</span>
-                <span><span className="swatch" style={{ background: '#002956' }} />Roth total wealth (tax-free)</span>
+                <span><span className="swatch dashed" />Traditional IRA gross CV</span>
+                <span><span className="swatch" style={{ background: '#555555' }} />Traditional total wealth</span>
+                <span><span className="swatch" style={{ background: '#002956' }} />Roth total wealth</span>
               </div>
               <div className="chart-wrap">
                 <canvas ref={chartRef} role="img" aria-label="Line chart comparing traditional IRA and Roth IRA total wealth." />
@@ -436,7 +446,7 @@
                       <th rowSpan={2} style={{ textAlign: 'left', verticalAlign: 'bottom', background: '#032244' }}>Year</th>
                       <th colSpan={4} className="th-group th-trad">Traditional IRA (pre-tax CV)</th>
                       <th colSpan={3} className="th-group th-roth">Roth IRA (tax-free CV)</th>
-                      <th colSpan={3} className="th-group th-adv">Total wealth (CV + cumul W)</th>
+                      <th colSpan={3} className="th-group th-adv">After-tax total wealth</th>
                     </tr>
                     <tr><th>EOY CV</th><th>Withdrawal</th><th>Tax</th><th>After-tax W</th><th>EOY CV</th><th>Withdrawal</th><th>After-tax W</th><th>Traditional</th><th>Roth</th><th>Advantage</th></tr>
                   </thead>
@@ -476,6 +486,29 @@
     // ─── mount ────────────────────────────────────────────────────────────────
     document.getElementById('loading').remove();
     ReactDOM.createRoot(document.getElementById('root')).render(<RothConversionCalculator />);
+
+    // ─── dynamic iframe height ────────────────────────────────────────────────
+    // Posts actual document height to the WordPress parent so the iframe resizes
+    // to fit content on every device — no fixed height needed in the embed code.
+    // Pair with the updated WordPress embed snippet (see README / deploy notes).
+    (function () {
+      let lastH = 0, timer;
+      function reportHeight() {
+        clearTimeout(timer);
+        timer = setTimeout(function () {
+          const h = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+          if (h !== lastH) {
+            lastH = h;
+            window.parent.postMessage({ type: 'rothCalcHeight', height: h }, '*');
+          }
+        }, 60);
+      }
+      if (typeof ResizeObserver !== 'undefined') {
+        new ResizeObserver(reportHeight).observe(document.body);
+      }
+      window.addEventListener('resize', reportHeight);
+      reportHeight();
+    })();
   </script>
 
   <style>
