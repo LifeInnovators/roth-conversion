@@ -299,7 +299,7 @@
       const [outsideTax, setOutsideTax] = useState(false);
       const [rmdMode,    setRmdMode]    = useState(false);
       const [startAge,   setStartAge]   = useState(65);
-      const [showExp,    setShowExp]    = useState(true);
+      const [showExp,    setShowExp]    = useState(false);
       const [showSum,    setShowSum]    = useState(false);
 
       const effectiveLiq = Math.max(liq, acc + 1);
@@ -492,6 +492,34 @@
     // ─── mount ────────────────────────────────────────────────────────────────
     document.getElementById('loading').remove();
     ReactDOM.createRoot(document.getElementById('root')).render(<RothConversionCalculator />);
+
+    // ─── dynamic iframe height ────────────────────────────────────────────────
+    (function () {
+      let lastH = 0, timer;
+      function reportHeight() {
+        clearTimeout(timer);
+        timer = setTimeout(function () {
+          const el = document.getElementById('tae-roth-calc');
+          const h = el
+            ? Math.ceil(el.getBoundingClientRect().bottom + window.scrollY) + 32
+            : Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+          if (h !== lastH) {
+            lastH = h;
+            window.parent.postMessage({ type: 'rothCalcHeight', height: h }, '*');
+          }
+        }, 80);
+      }
+      if (typeof ResizeObserver !== 'undefined') {
+        new ResizeObserver(reportHeight).observe(document.getElementById('root') || document.body);
+      }
+      window.addEventListener('resize', reportHeight);
+      window.addEventListener('load', reportHeight);
+      // Re-send height when parent asks (e.g. after WP layout changes)
+      window.addEventListener('message', function (e) {
+        if (e.data && e.data.type === 'rothCalcPing') { lastH = 0; reportHeight(); }
+      });
+      setTimeout(reportHeight, 400);
+    })();
 
   </script>
 
