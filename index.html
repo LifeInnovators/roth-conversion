@@ -228,12 +228,12 @@
 
       const rateDiff = Math.round(taxd - tax);
       const args = [];
-      args.push({ title: 'Tax-free growth on all distributions', body: `Every dollar withdrawn from the Roth is tax-free. Withdrawals from the traditional IRA are taxed as ordinary income at ${taxd}% — reducing your spendable cash on every distribution for the life of the contract.`, num: `After-tax Roth withdrawals exceed traditional by ${fmt(last.cumRothW - last.cumTradAtw)} over the projection period.`, qual: false });
-      if (rateDiff > 0) args.push({ title: 'Tax rate lock-in', body: `Converting now at ${tax}% locks in today's rate. Future distributions from the traditional IRA would be taxed at ${taxd}% — ${rateDiff} points higher. All growth inside the Roth escapes that higher rate entirely.`, num: `${rateDiff}pt rate advantage applied to every future distribution and the full liquidation value.`, qual: false });
+      args.push({ title: 'Tax-free growth on all distributions', body: `Every dollar withdrawn from the Roth is tax-free. Withdrawals from the Traditional IRA are taxed as ordinary income at ${taxd}% — reducing your spendable cash on every distribution for the life of the contract.`, num: `After-tax Roth withdrawals exceed traditional by ${fmt(last.cumRothW - last.cumTradAtw)} over the projection period.`, qual: false });
+      if (rateDiff > 0) args.push({ title: 'Tax rate lock-in', body: `Converting now at ${tax}% locks in today's rate. Future distributions from the Traditional IRA would be taxed at ${taxd}% — ${rateDiff} points higher. All growth inside the Roth escapes that higher rate entirely.`, num: `${rateDiff}pt rate advantage applied to every future distribution and the full liquidation value.`, qual: false });
       if (outsideTax) args.push({ title: 'Full base compounding (outside tax)', body: `Because the conversion tax of ${fmt(taxPaid)} is paid from outside the contract, the full ${fmt(pv)} compounds inside the Roth tax-free — rather than only ${fmt(pv * (1 - tax / 100))} if the tax were paid from within.`, num: `Full ${fmt(pv)} compounding at ${rate}% tax-free vs. ${fmt(pv * (1 - tax / 100))} in the inside-tax scenario.`, qual: false });
       if (rmdMode) args.push({ title: 'No required minimum distributions', body: 'Traditional IRAs require distributions starting at age 73 — forcing taxable income whether you need it or not. The Roth IRA has no RMDs during your lifetime.', num: 'RMD-forced distributions are shown in the ledger. The Roth avoids all of them.', qual: false });
       args.push({ title: 'Tax diversification and income flexibility', body: `A Roth bucket alongside pre-tax accounts lets you control your taxable income in retirement — drawing from Roth in years when additional income would push you into a higher bracket, trigger Social Security taxation, or increase Medicare premiums.`, num: null, qual: true });
-      args.push({ title: 'Estate and legacy benefit', body: `Roth IRA assets pass to beneficiaries tax-free. Inherited traditional IRAs require full distribution within 10 years under current law, with all proceeds taxed as ordinary income to heirs — often at their peak earning years.`, num: null, qual: true });
+      args.push({ title: 'Estate and legacy benefit', body: `Roth IRA assets pass to beneficiaries tax-free. Inherited Traditional IRAs require full distribution within 10 years under current law, with all proceeds taxed as ordinary income to heirs — often at their peak earning years.`, num: null, qual: true });
 
       const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
       return (
@@ -376,10 +376,10 @@
                 <div className="tae-badge">Calculator tool</div>
               </div>
               <h1>Roth conversion calculator</h1>
-              <p className="subtitle">Year-by-year ledger — traditional IRA vs. Roth IRA after-tax outcomes</p>
+              <p className="subtitle">Year-by-year ledger — Traditional IRA vs. Roth IRA after-tax outcomes</p>
 
               <div className="tool-disclaimer">
-                <p>This tool models the year-by-year comparison between a traditional IRA annuity and a Roth IRA annuity under identical growth assumptions, with tax rates set independently for the conversion year and distribution years. It is a <strong>planning tool, not an illustration</strong> — designed to show the structural logic of a conversion at stated rate assumptions before any product recommendation is made.</p>
+                <p>This tool models the year-by-year comparison between a Traditional IRA annuity and a Roth IRA annuity under identical growth assumptions, with tax rates set independently for the conversion year and distribution years. It is a <strong>planning tool, not an illustration</strong> — designed to show the structural logic of a conversion at stated rate assumptions before any product recommendation is made.</p>
                 <p>It does not model year-to-year variation in tax rates, IRMAA thresholds, state income tax, the pro-rata rule, the widow's penalty, or the specific product features of any annuity contract. Those variables require a tax professional and a product-specific illustration.</p>
               </div>
 
@@ -393,7 +393,7 @@
                   <ExCard icon="ti-calendar-off"           title="No required distributions"  body="Roth IRAs have no required minimum distributions during the owner's lifetime. Traditional IRAs force taxable income starting at age 73 — whether you need the money or not — potentially pushing you into a higher bracket." />
                   <ExCard icon="ti-lock"                   title="Lock in today's tax rate"   body="Converting now pays tax at today's known rate on your current balance. If your tax rate rises — through legislation or higher retirement income — every dollar of future growth inside the Roth is permanently protected." />
                   <ExCard icon="ti-trending-up"            title="Full base compounding"      body="Paying conversion tax from outside the contract puts 100% of your contract value to work tax-free. More dollars compounding at the same rate — for the full projection period — generates meaningfully more tax-free wealth over time." />
-                  <ExCard icon="ti-building-bank"          title="Estate and legacy planning" body="Roth assets pass to beneficiaries tax-free. Inherited traditional IRAs require full distribution within 10 years under current law — taxed as ordinary income to heirs, often at their peak earning years." />
+                  <ExCard icon="ti-building-bank"          title="Estate and legacy planning" body="Roth assets pass to beneficiaries tax-free. Inherited Traditional IRAs require full distribution within 10 years under current law — taxed as ordinary income to heirs, often at their peak earning years." />
                   <ExCard icon="ti-adjustments-horizontal" title="Tax diversification"        body="A Roth account alongside pre-tax assets gives you control over taxable income in retirement — staying below bracket thresholds, managing Medicare IRMAA surcharges, and reducing the taxable portion of Social Security." />
                 </div>
               )}
@@ -410,12 +410,10 @@
               </div>
               <div className="checks">
                 <div className="check-row">
-                  <label className="check-label"><input type="checkbox" checked={outsideTax} onChange={e => setOutsideTax(e.target.checked)} /><span>Tax paid from outside contract</span></label>
-                  <div className="check-sub">Roth starts at full value — conversion tax funded from external assets.</div>
+                  <label className="check-label"><input type="checkbox" checked={outsideTax} onChange={e => setOutsideTax(e.target.checked)} /><span>Pay conversion tax from outside savings.</span></label>
                 </div>
                 <div className="check-row">
-                  <label className="check-label"><input type="checkbox" checked={rmdMode} onChange={e => setRmdMode(e.target.checked)} /><span>Apply RMDs to traditional IRA</span></label>
-                  <div className="check-sub">Forces IRS required minimum distributions starting at age 73. Roth has no RMDs.</div>
+                  <label className="check-label"><input type="checkbox" checked={rmdMode} onChange={e => setRmdMode(e.target.checked)} /><span>Apply RMDs to Traditional IRA.</span></label>
                   {rmdMode && (
                     <div className="age-ctrl visible">
                       <label>Current age</label>
@@ -441,7 +439,7 @@
                 <span><span className="swatch" style={{ background: '#002956' }} />Roth total wealth</span>
               </div>
               <div className="chart-wrap">
-                <canvas ref={chartRef} role="img" aria-label="Line chart comparing traditional IRA and Roth IRA total wealth." />
+                <canvas ref={chartRef} role="img" aria-label="Line chart comparing Traditional IRA and Roth IRA total wealth." />
               </div>
               <hr />
 
